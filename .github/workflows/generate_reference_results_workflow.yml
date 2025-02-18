@@ -64,7 +64,7 @@ jobs:
         git push
     - name: Upload artifacts for debugging
       if: failure()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: runs
         path: |
