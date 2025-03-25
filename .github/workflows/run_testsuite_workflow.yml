@@ -10,13 +10,13 @@ on:
         description: 'Build arguments'
         required: false
         type: string
-      systests_branch:
-        description: 'Branch to take the systest from'
+      system_tests_branch:
+        description: 'Branch to take the system tests from'
         default: 'develop'
         required: true
         type: string
-      loglevel:
-        description: 'loglevel used for the systemtests'
+      log_level:
+        description: 'Logging verbosity level used for the systemtests'
         default: 'INFO'
         required: false
         type: string
@@ -32,8 +32,8 @@ jobs:
       run: |
         echo "Initiated by: ${{ github.actor }}"
         echo "Test suites: ${{ inputs.suites}}"
-        echo "System tests branch (tools/): ${{ inputs.systests_branch }}"
-        echo "System tests log level: ${{ inputs.loglevel }}"
+        echo "System tests branch (tools/): ${{ inputs.system_tests_branch }}"
+        echo "System tests log level: ${{ inputs.log_level }}"
         echo "Uploading the runs folder on success: ${{ inputs.upload_artifacts }}"
         echo "Running the following command inside tutorials/tools/:"
         echo "python3 systemtests.py --build_args=${{inputs.build_args}} --suites=${{ inputs.suites}}"
@@ -42,8 +42,8 @@ jobs:
         echo "Job inputs:"
         echo "- Initiated by: @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
         echo "- Test suites: \`${{ inputs.suites}}\`" >> $GITHUB_STEP_SUMMARY
-        echo "- System tests branch (\`tools/\`): [\`${{ inputs.systests_branch }}\`](https://github.com/precice/tutorials/tree/${{ inputs.systests_branch }})" >> $GITHUB_STEP_SUMMARY
-        echo "- System tests log level: \`${{ inputs.loglevel }}\`"
+        echo "- System tests branch (\`tools/\`): [\`${{ inputs.system_tests_branch }}\`](https://github.com/precice/tutorials/tree/${{ inputs.system_tests_branch }})" >> $GITHUB_STEP_SUMMARY
+        echo "- System tests log level: \`${{ inputs.log_level }}\`"
         echo "- Uploading the runs folder on success: \`${{ inputs.upload_artifacts }}\`" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "Running the following command inside \`tutorials/tools/\`:" >> $GITHUB_STEP_SUMMARY
@@ -59,11 +59,11 @@ jobs:
         rm -rf ./*
         rm -rf ./.??*
         ls -la ./
-    - name: Check out Tutorials for systest
+    - name: Check out Tutorials for them system tests (tools/tests/)
       uses: actions/checkout@v4
       with:
         repository: precice/tutorials
-        ref: ${{ inputs.systests_branch }}
+        ref: ${{ inputs.system_tests_branch }}
         lfs: true
         fetch-depth: 0
     - name: Map remote branches to local ones
@@ -75,7 +75,7 @@ jobs:
     - name: Run tests
       run: |
         cd tools/tests
-        python systemtests.py --build_args=${{ inputs.build_args}} --suites=${{ inputs.suites}} --log-level=${{ inputs.loglevel}}
+        python systemtests.py --build_args=${{ inputs.build_args}} --suites=${{ inputs.suites}} --log-level=${{ inputs.log_level}}
         cd ../../
     - name: Archive run files
       if: ${{  failure() || inputs.upload_artifacts == 'TRUE' }}
