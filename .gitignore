@@ -97,6 +97,9 @@ dune-*
 */build-cmake/
 install*
 
+# G+smo
+pointData.csv
+
 # FEniCS covered by .vtk
 # Nutils covered by .vtk
 
