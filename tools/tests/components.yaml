@@ -52,9 +52,8 @@ openfoam-adapter:
       description: Tutorial git reference to use
       default: "master"
     OPENFOAM_EXECUTABLE:
-      options: ["openfoam2306","openfoam2212","openfoam2112"]
       description: exectuable of openfoam to use
-      default: "openfoam2306"
+      default: "openfoam2312"
     OPENFOAM_ADAPTER_REF:
       description: Reference/tag of the OpenFOAM adapter to use
       default: "master"
@@ -146,4 +145,24 @@ su2-adapter:
       default: "7.5.1"
     SU2_ADAPTER_REF:
       description: Version of SU2-Adapter to use
+      default: "master"
+
+dealii-adapter:
+  repository: https://github.com/precice/dealii-adapter
+  template: component-templates/dealii-adapter.yaml
+  build_arguments:
+    PLATFORM:
+      description: Dockerfile platform used
+      default: "ubuntu_2404"
+    PRECICE_REF:
+      description: Version of preCICE to use
+      default: "main"
+    PRECICE_PRESET:
+      description: CMake preset of preCICE
+      default: "production-audit"
+    TUTORIALS_REF:
+      description: Tutorial git reference to use
+      default: "master"
+    DEALII_ADAPTER_REF:
+      description: Version of deal.ii-adapter to use
       default: "master"
