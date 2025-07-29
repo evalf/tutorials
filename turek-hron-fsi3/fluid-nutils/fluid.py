@@ -72,7 +72,7 @@ class Domain:
 class Fluid:
     density: Density = Density('1kg/L')
     viscosity: Viscosity = Viscosity('1Pa*s')
-    velocity: Velocity = Velocity('1m/s')
+    velocity: Velocity = Velocity('2m/s')
 
     def reynolds(self, reference_length):
         return self.density * self.velocity * reference_length / self.viscosity

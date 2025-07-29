@@ -58,9 +58,9 @@ class Domain:
 
 @dataclass
 class Solid:
-    density: Density = Density('10kg/L')
+    density: Density = Density('1kg/L')
     poisson_ratio: float = .4
-    shear_modulus: Pressure = Pressure('.5MPa')
+    shear_modulus: Pressure = Pressure('2MPa')
     gravity: Acceleration = Acceleration('0m/s2')
 
     def lame_parameters(self):
