@@ -125,44 +125,6 @@ class Dynamic:
         return D['u0δt'] / self.timestep, D['a0δt2'] / self.timestep**2
 
 
-@dataclass
-class DummyParticipant:
-
-    timestep: Time = Time('10ms')
-    endtime: Time = Time('10s')
-
-    def __post_init__(self):
-        self.countdown = self.endtime / self.timestep
-        self.npoints = {}
-
-    def initialize(self):
-        pass
-
-    def set_mesh_vertices(self, mesh_name, points):
-        self.npoints[mesh_name] = len(points)
-
-    def is_coupling_ongoing(self):
-        return self.countdown > 0
-
-    def get_max_time_step_size(self):
-        return self.timestep / precice_time
-
-    def requires_writing_checkpoint(self):
-        return True
-
-    def requires_reading_checkpoint(self):
-        return False
-
-    def read_data(self, mesh_name, *_):
-        return numpy.zeros((self.npoints[mesh_name], 2))
-
-    def write_data(self, *_):
-        pass
-
-    def advance(self, dt):
-        self.countdown -= 1
-
-
 def main(domain: Domain = Domain(), solid: Solid = Solid(), dynamic: Dynamic = Dynamic()):
 
     participant = Participant('Solid', '../precice-config.xml', 0, 1)
