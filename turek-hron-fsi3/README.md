@@ -59,7 +59,7 @@ In the first few timesteps, many coupling iterations are required for convergenc
 
 ## Post-processing
 
-You can visualize the results of the coupled simulation using e.g. ParaView. OpenFOAM uses the specific format `fluid-openfoam.foam`, which you directly load in Paraview or convert to VTK with `foamToVTK`. deal.II writes VTK files. Both Nutils solvers currently don not write VTK files (but their own in-situ visualization), but this can be added easily similarly to the [perpendicular flap solvers](https://github.com/precice/tutorials/blob/98a78fe2dc2f6c5d84b2b30d35d00352782236f8/perpendicular-flap/fluid-nutils/fluid.py#L227).
+You can visualize the results of the coupled simulation using e.g. ParaView. OpenFOAM uses an OpenFOAM-specific format, and you can directly load the (empty) file `fluid-openfoam.foam` in Paraview or convert the results to VTK with `foamToVTK`. deal.II writes VTK files. Both Nutils solvers currently do not write VTK files (but use their own in-situ visualization), but this can be easily added similarly to the [perpendicular flap solvers](https://github.com/precice/tutorials/blob/98a78fe2dc2f6c5d84b2b30d35d00352782236f8/perpendicular-flap/fluid-nutils/fluid.py#L227).
 
 If you want to visualize both domains with ParaView, keep in mind that the different solvers may write results with different output frequencies.
 
