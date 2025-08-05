@@ -74,7 +74,7 @@ Moreover, as we defined a watchpoint at the flap tip (see `precice-config.xml`),
 
 Before running the simulation again, you may want to cleanup any result files using the script `clean-tutorial.sh`.
 
-## Mesh refinement for OpenFOAM
+## Mesh refinement
 
 In `fluid-openfoam/system/`, we provide three different fluid meshes:
 
