@@ -59,19 +59,22 @@ In the first few timesteps, many coupling iterations are required for convergenc
 
 ## Post-processing
 
-You can visualize the results of the coupled simulation using e.g. ParaView. OpenFOAM uses the specific format `fluid-openfoam.foam`, which you directly load in Paraview or convert to VTK with `foamToVTK`. deal.II writes VTK files. Both Nutils solvers currently don not write VTK files (but their own in-situ visualization), but this can be added easily similarly to the [perpendicular flap solvers](https://github.com/precice/tutorials/blob/98a78fe2dc2f6c5d84b2b30d35d00352782236f8/perpendicular-flap/fluid-nutils/fluid.py#L227).
+You can visualize the results of the coupled simulation using e.g. ParaView. OpenFOAM uses an OpenFOAM-specific format, and you can directly load the (empty) file `fluid-openfoam.foam` in Paraview or convert the results to VTK with `foamToVTK`. deal.II writes VTK files. Both Nutils solvers currently do not write VTK files (but use their own in-situ visualization), but this can be easily added similarly to the [perpendicular flap solvers](https://github.com/precice/tutorials/blob/98a78fe2dc2f6c5d84b2b30d35d00352782236f8/perpendicular-flap/fluid-nutils/fluid.py#L227).
 
-If you want to visualize both domains with ParaView, keep in mind that the different solvers may write results with different output frequencies.
+If you want to visualize both domains with ParaView, keep in mind that the different solvers may write results with different output frequencies, which you might want to [synchronize](https://precice.org/tutorials-visualization.html#synchronizing-results).
 
-There is an [known issue](https://github.com/precice/openfoam-adapter/issues/26) that leads to additional "empty" result directories when running with some OpenFOAM versions, leading to inconveniences during post-processing. At the end of `run.sh`, we call `openfoam_remove_empty_dirs` (provided by `tools/openfoam-remove-empty-dirs`) to delete the additional files before importing the results in ParaView.
+There is a [known issue](https://github.com/precice/openfoam-adapter/issues/26) that leads to additional "empty" result directories when running with some OpenFOAM versions, leading to inconveniences during post-processing. At the end of `run.sh`, we call `openfoam_remove_empty_dirs` (provided by `tools/openfoam-remove-empty-dirs`) to delete the additional files before importing the results in ParaView.
 
-Moreover, as we defined a watchpoint at the flap tip (see `precice-config.xml`), we can plot it with gnuplot using the script `plot-displacement.sh`. You need to specify the directory of the selected solid participant as a command line argument, so that the script can pick-up the desired watchpoint file, e.g. `plot-displacement.sh solid-dealii`. The resulting graph shows the vertical (y) displacement of the tip of the flap.
+Moreover, as we defined a watchpoint at the flap tip (see `precice-config.xml`), we can plot it with gnuplot using the script `plot-displacement.sh`, which expects the directory of the selected solid participant as a command line argument. For example:
+
+ ```shell
+ plot-displacement.sh solid-dealii
 
 ![FSI3 watchpoint](images/tutorials-turek-hron-fsi3-tip-plot.png)
 
 Before running the simulation again, you may want to cleanup any result files using the script `clean-tutorial.sh`.
 
-## Mesh refinement for OpenFOAM
+## Mesh refinement
 
 In `fluid-openfoam/system/`, we provide three different fluid meshes:
 
