@@ -217,16 +217,16 @@ def main(domain: Domain = Domain(), fluid: Fluid = Fluid(), dynamic: Dynamic = D
     sys_up = System(res, trial='u,p', test='utest,ptest')
 
     # t = -σ·n => ∀q: ∮ -q·t = ∮ q·σ·n = ∫ div(q·σ) = ∫ (∇q:σ + q·div σ) = ∫ (∇q:σ + ρf q·DuDt)
-    ns.t = topo.field('t', btype='std', degree=2, shape=[
-                      2]) * (fluid.viscosity * fluid.velocity / domain.cylinder_radius)
+    ns.traction = topo.field('traction', btype='std', degree=2, shape=[
+        2]) * (fluid.viscosity * fluid.velocity / domain.cylinder_radius)
     res += topo.boundary['cylinder,structure'].integral(
-        'utest_i t_i dS' @ ns, degree=4)
-    sys_t = System(res, trial='t', test='utest')
+        'utest_i traction_i dS' @ ns, degree=4)
+    sys_t = System(res, trial='traction', test='utest')
     sqr = topo.boundary['cylinder,structure'].integral(
-        't_i t_i' @ ns, degree=4) / 'Pa2'
-    cons['t'] = numpy.isnan(
-        System(sqr, trial='t').solve_constraints(droptol=1e-10)['t'])
-    F = topo.boundary['cylinder,structure'].integral('t_i dS' @ ns, degree=4)
+        'traction_i traction_i' @ ns, degree=4) / 'Pa2'
+    cons['traction'] = numpy.isnan(
+        System(sqr, trial='traction').solve_constraints(droptol=1e-10)['traction'])
+    F = topo.boundary['cylinder,structure'].integral('traction_i dS' @ ns, degree=4)
 
     # mesh continuation with jacobian based stiffness
     sqr = topo.integral('C_kk - 2 log(J)' @ ns, degree=4)
@@ -268,7 +268,7 @@ def main(domain: Domain = Domain(), fluid: Fluid = Fluid(), dynamic: Dynamic = D
                                tol=1e-10)  # project traction
 
             participant.write_data(
-                w_name, 'Stress', w_ids, w_sample.eval(ns.t, args) / precice_stress)
+                w_name, 'Stress', w_ids, w_sample.eval(ns.traction, args) / precice_stress)
             participant.advance(timestep)
 
             if participant.requires_reading_checkpoint():
