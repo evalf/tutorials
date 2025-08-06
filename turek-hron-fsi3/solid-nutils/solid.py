@@ -106,16 +106,29 @@ class Dynamic:
     # => δu = δt [ a0 + γ δa ]
     # => δa = [ δu / δt - a0 ] / γ
 
-    def newmark_defo_args(self, d, d0=0., u0δt=0., a0δt2=0., **args):
-        δaδt2 = (d - d0 - u0δt - .5 * a0δt2) / self.beta
-        uδt = u0δt + a0δt2 + self.gamma * δaδt2
-        aδt2 = a0δt2 + δaδt2
-        return dict(args, d=d + uδt + .5 * aδt2, d0=d, u0δt=uδt, a0δt2=aδt2)
+    def newmark_defo(self, δt, δd, u0, a0):
+        'Compute first and second time derivative of deformation.'
+        δa = (δd / δt**2 - u0 / δt - .5 * a0) / self.beta
+        δu = δt * (a0 + self.gamma * δa)
+        return u0 + δu, a0 + δa
 
-    def newmark_defo(self, d, timestep):
-        D = self.newmark_defo_args(
-            d, *[function.replace_arguments(d, [('d', t)]) for t in ('d0', 'u0δt', 'a0δt2')])
-        return D['u0δt'] / timestep, D['a0δt2'] / timestep**2
+    def newmark_defo_fields(self, d):
+        'Generate velocity and acceleration field.'
+        # By using the same scaling factor for time and time derivatives we can
+        # apply newmark_defo directly on the non-dimensional coefficients in
+        # newmark_update.
+        return self.newmark_defo(
+            (function.field('t') - function.field('t0')) * precice_time,
+            d - function.replace_arguments(d, 'd:d0'),
+            function.replace_arguments(d, 'd:ḋ0') / precice_time,
+            function.replace_arguments(d, 'd:d̈0') / precice_time**2)
+
+    def newmark_update(self, δt, t, d, t0=-1., d0=0., ḋ0=0., d̈0=0., **args):
+        'Construct time derivatives, update time, construct initial guess.'
+        # Note: all arguments are non-dimensional.
+        ḋ, d̈ = self.newmark_defo(t - t0, d - d0, ḋ0, d̈0)
+        d_predict = d + δt * ḋ + .5 * δt**2 * d̈
+        return dict(args, t0=t, t=t + δt, d=d_predict, d0=d, ḋ0=ḋ, d̈0=d̈)
 
 
 def main(domain: Domain = Domain(), solid: Solid = Solid(), dynamic: Dynamic = Dynamic()):
@@ -131,8 +144,6 @@ def main(domain: Domain = Domain(), solid: Solid = Solid(), dynamic: Dynamic = D
 
     participant.initialize()
 
-    timestep = participant.get_max_time_step_size()
-
     ns = Namespace()
     ns.δ = function.eye(2)
     ns.xref = geom
@@ -144,7 +155,7 @@ def main(domain: Domain = Domain(), solid: Solid = Solid(), dynamic: Dynamic = D
 
     ns.d = topo.field('d', btype='std', degree=2, shape=(
         2,)) * domain.cylinder_radius  # deformation at the end of the timestep
-    ns.v, ns.a = dynamic.newmark_defo(ns.d, timestep * precice_time)
+    ns.v, ns.a = dynamic.newmark_defo_fields(ns.d)
 
     ns.dtest = function.replace_arguments(
         ns.d, 'd:dtest') / (solid.shear_modulus * domain.cylinder_radius**2)
@@ -170,8 +181,7 @@ def main(domain: Domain = Domain(), solid: Solid = Solid(), dynamic: Dynamic = D
     system = System(res, trial='d', test='dtest')
 
     # initial values
-    args = {'d': numpy.zeros(function.arguments_for(res)['d'].shape)}
-    t = Time('0s')
+    args = {a: numpy.zeros(function.arguments_for(res)[a].shape) for a in 'dt'}
 
     bbezier = topo.boundary.sample('bezier', 3)
     x_bbz = bbezier.bind(ns.x)
@@ -180,24 +190,30 @@ def main(domain: Domain = Domain(), solid: Solid = Solid(), dynamic: Dynamic = D
         while participant.is_coupling_ongoing():
 
             if participant.requires_writing_checkpoint():
-                checkpoint = t, args
+                checkpoint = args
 
-            t += timestep * precice_time
+            timestep = participant.get_max_time_step_size()
 
-            args = dynamic.newmark_defo_args(**args)
+            # update time derivatives (implies copy)
+            args = dynamic.newmark_update(timestep, **args)
+            # receive boundary tractions
             args['traction'] = participant.read_data(
                 rw_name, 'Stress', rw_ids, timestep)
+            # solve momentum equation time step
             args = system.solve(arguments=args, constrain=cons, tol=1e-10)
-
+            # send flap displacements
             participant.write_data(
                 rw_name, 'Displacement', rw_ids, rw_sample.eval(ns.d, args) / precice_length)
+
             participant.advance(timestep)
 
             if participant.requires_reading_checkpoint():
-                t, args = checkpoint
+                args = checkpoint
 
             if participant.is_time_window_complete():
                 next(iter_context)
+
+                t = args['t'] * precice_time
 
                 xb = function.eval(x_bbz, args)
                 with export.mplfigure('solution.jpg', dpi=150) as fig:

@@ -118,25 +118,46 @@ class Dynamic:
     # => δu = δt [ a0 + γ δa ]
     # => δa = [ δu / δt - a0 ] / γ
 
-    def newmark_defo_args(self, d, d0=0., u0δt=0., a0δt2=0., **args):
-        δaδt2 = (d - d0 - u0δt - .5 * a0δt2) / self.beta
-        uδt = u0δt + a0δt2 + self.gamma * δaδt2
-        aδt2 = a0δt2 + δaδt2
-        return dict(args, d=d + uδt + .5 * aδt2, d0=d, u0δt=uδt, a0δt2=aδt2)
+    def newmark_defo(self, δt, δd, u0, a0):
+        'Compute first and second time derivative of deformation.'
+        δa = (δd / δt**2 - u0 / δt - .5 * a0) / self.beta
+        δu = δt * (a0 + self.gamma * δa)
+        return u0 + δu, a0 + δa
 
-    def newmark_defo(self, d, timestep):
-        D = self.newmark_defo_args(
-            d, *[function.replace_arguments(d, [('d', t)]) for t in ('d0', 'u0δt', 'a0δt2')])
-        return D['u0δt'] / timestep, D['a0δt2'] / timestep**2
+    def newmark_defo_fields(self, d):
+        'Generate velocity and acceleration field.'
+        # By using the same scaling factor for time and time derivatives we can
+        # apply newmark_defo directly on the non-dimensional coefficients in
+        # newmark_update.
+        return self.newmark_defo(
+            (function.field('t') - function.field('t0')) * precice_time,
+            d - function.replace_arguments(d, 'd:d0'),
+            function.replace_arguments(d, 'd:ḋ0') / precice_time,
+            function.replace_arguments(d, 'd:d̈0') / precice_time**2)
 
-    def newmark_velo_args(self, u, u0=0., a0δt=0., **args):
-        aδt = a0δt + (u - u0 - a0δt) / self.gamma
-        return dict(args, u=u + aδt, u0=u, a0δt=aδt)
+    def newmark_velo(self, δt, δu, a0):
+        'Compute first time derivative of velocity.'
+        δa = (δu / δt - a0) / self.gamma
+        return a0 + δa
 
-    def newmark_velo(self, u, timestep):
-        D = self.newmark_velo_args(
-            u, *[function.replace_arguments(u, [('u', t)]) for t in ('u0', 'a0δt')])
-        return D['a0δt'] / timestep
+    def newmark_velo_field(self, u):
+        'Generate acceleration field.'
+        # By using the same scaling factor for time and time derivatives we can
+        # apply newmark_velo directly on the non-dimensional coefficients in
+        # newmark_update.
+        return self.newmark_velo(
+            (function.field('t') - function.field('t0')) * precice_time,
+            u - function.replace_arguments(u, 'u:u0'),
+            function.replace_arguments(u, 'u:u̇0') / precice_time)
+
+    def newmark_update(self, δt, t, d, u, t0=-1., d0=0., ḋ0=0., d̈0=0., u0=0., u̇0=0., **args):
+        'Construct time derivatives, update time, construct initial guess.'
+        # Note: all arguments are non-dimensional.
+        ḋ, d̈ = self.newmark_defo(t - t0, d - d0, ḋ0, d̈0)
+        u̇ = self.newmark_velo(t - t0, u - u0, u̇0)
+        d_predict = d + δt * ḋ + .5 * δt**2 * d̈
+        u_predict = u + δt * u̇
+        return dict(args, t0=t, t=t + δt, d=d_predict, d0=d, ḋ0=ḋ, d̈0=d̈, u=u_predict, u0=u, u̇0=u̇)
 
 
 def main(domain: Domain = Domain(), fluid: Fluid = Fluid(), dynamic: Dynamic = Dynamic()):
@@ -164,8 +185,6 @@ def main(domain: Domain = Domain(), fluid: Fluid = Fluid(), dynamic: Dynamic = D
 
     participant.initialize()
 
-    timestep = participant.get_max_time_step_size()
-
     ns = Namespace()
     ns.δ = function.eye(2)
     ns.ρf = fluid.density
@@ -184,8 +203,8 @@ def main(domain: Domain = Domain(), fluid: Fluid = Fluid(), dynamic: Dynamic = D
 
     ns.urel = topo.field('u', btype='std', degree=2,
                          shape=(2,)) * fluid.velocity
-    ns.v, ns.a = dynamic.newmark_defo(ns.d, timestep * precice_time)
-    ns.arel = dynamic.newmark_velo(ns.urel, timestep * precice_time)
+    ns.v, ns.a = dynamic.newmark_defo_fields(ns.d)
+    ns.arel = dynamic.newmark_velo_field(ns.urel)
     ns.u_i = 'v_i + urel_i'
     ns.DuDt_i = 'a_i + arel_i + ∇_j(u_i) urel_j'  # material derivative
 
@@ -233,8 +252,7 @@ def main(domain: Domain = Domain(), fluid: Fluid = Fluid(), dynamic: Dynamic = D
     sys_d = System(sqr, trial='d')
 
     # initial values
-    args = {a: numpy.zeros(function.arguments_for(res)[a].shape) for a in 'ud'}
-    t = Time('0s')
+    args = {a: numpy.zeros(function.arguments_for(res)[a].shape) for a in 'udt'}
 
     bezier = topo['fluid'].sample('bezier', 3)
     bezier = bezier.subset(bezier.eval(geom[0]) < 2.2 * domain.channel_height)
@@ -250,32 +268,36 @@ def main(domain: Domain = Domain(), fluid: Fluid = Fluid(), dynamic: Dynamic = D
         while participant.is_coupling_ongoing():
 
             if participant.requires_writing_checkpoint():
-                checkpoint = t, args
+                checkpoint = args
 
-            t += timestep * precice_time
+            timestep = participant.get_max_time_step_size()
 
+            # receive flap displacements
             cons['d'][r_where] = participant.read_data(
                 r_name, 'Displacement', r_ids, timestep)
-            cons['u'] = ucons * dynamic.ramp_up(t)
-
-            args = dynamic.newmark_defo_args(**args)
-            args = dynamic.newmark_velo_args(**args)
-            args = sys_d.solve(arguments=args, constrain=cons,
-                               tol=1e-10)  # mesh extension
-            # Navier-Stokes time step
+            # generate inflow constraints
+            cons['u'] = ucons * dynamic.ramp_up(args['t'] * precice_time)
+            # update time derivatives (implies copy)
+            args = dynamic.newmark_update(timestep, **args)
+            # extend mesh
+            args = sys_d.solve(arguments=args, constrain=cons, tol=1e-10)
+            # solve Navier-Stokes time step
             args = sys_up.solve(arguments=args, constrain=cons, tol=1e-10)
-            args = sys_t.solve(arguments=args, constrain=cons,
-                               tol=1e-10)  # project traction
-
+            # project boundary tractions
+            args = sys_t.solve(arguments=args, constrain=cons, tol=1e-10)
+            # send boundary tractions
             participant.write_data(
                 w_name, 'Stress', w_ids, w_sample.eval(ns.traction, args) / precice_stress)
+
             participant.advance(timestep)
 
             if participant.requires_reading_checkpoint():
-                t, args = checkpoint
+                args = checkpoint
 
             if participant.is_time_window_complete():
                 next(iter_context)
+
+                t = args['t'] * precice_time
 
                 x, xb, u, p = function.eval([x_bz, x_bbz, u_bz, p_bz], args)
                 with export.mplfigure('solution.jpg', dpi=150) as fig:
