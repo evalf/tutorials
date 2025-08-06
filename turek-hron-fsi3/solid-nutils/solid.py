@@ -77,19 +77,20 @@ class Dynamic:
     gamma: float = .8
     beta: float = .4
 
-    def set_timestep(self, timestep):
-        self.timestep = timestep
-        self.timeseries = defaultdict(
-            deque(maxlen=round(self.window / timestep)).copy)
+    def __post_init__(self):
+        self.timeseries = defaultdict(deque)
 
-    def add_and_plot(self, name, t, v, ax):
+    def add_and_plot(self, name, t, tunit, v, vunit, ax):
         'Add data point and plot time series for past window.'
 
         d = self.timeseries[name]
         d.append((t, v))
-        times, values = numpy.stack(d, axis=1)
+        while t - d[0][0] > self.window:
+            d.popleft()
+        times = numpy.array([t / tunit for t, _ in d])
+        values = numpy.array([v / vunit for _, v in d])
         ax.plot(times, values)
-        ax.set_ylabel(name)
+        ax.set_ylabel(f'{name} [{vunit}]')
         ax.grid()
         ax.autoscale(enable=True, axis='x', tight=True)
 
@@ -111,10 +112,10 @@ class Dynamic:
         aδt2 = a0δt2 + δaδt2
         return dict(args, d=d + uδt + .5 * aδt2, d0=d, u0δt=uδt, a0δt2=aδt2)
 
-    def newmark_defo(self, d):
+    def newmark_defo(self, d, timestep):
         D = self.newmark_defo_args(
             d, *[function.replace_arguments(d, [('d', t)]) for t in ('d0', 'u0δt', 'a0δt2')])
-        return D['u0δt'] / self.timestep, D['a0δt2'] / self.timestep**2
+        return D['u0δt'] / timestep, D['a0δt2'] / timestep**2
 
 
 def main(domain: Domain = Domain(), solid: Solid = Solid(), dynamic: Dynamic = Dynamic()):
@@ -131,7 +132,6 @@ def main(domain: Domain = Domain(), solid: Solid = Solid(), dynamic: Dynamic = D
     participant.initialize()
 
     timestep = participant.get_max_time_step_size()
-    dynamic.set_timestep(timestep * precice_time)
 
     ns = Namespace()
     ns.δ = function.eye(2)
@@ -144,7 +144,7 @@ def main(domain: Domain = Domain(), solid: Solid = Solid(), dynamic: Dynamic = D
 
     ns.d = topo.field('d', btype='std', degree=2, shape=(
         2,)) * domain.cylinder_radius  # deformation at the end of the timestep
-    ns.v, ns.a = dynamic.newmark_defo(ns.d)
+    ns.v, ns.a = dynamic.newmark_defo(ns.d, timestep * precice_time)
 
     ns.dtest = function.replace_arguments(
         ns.d, 'd:dtest') / (solid.shear_modulus * domain.cylinder_radius**2)
@@ -182,7 +182,7 @@ def main(domain: Domain = Domain(), solid: Solid = Solid(), dynamic: Dynamic = D
             if participant.requires_writing_checkpoint():
                 checkpoint = t, args
 
-            t += dynamic.timestep
+            t += timestep * precice_time
 
             args = dynamic.newmark_defo_args(**args)
             args['traction'] = participant.read_data(
@@ -213,9 +213,9 @@ def main(domain: Domain = Domain(), solid: Solid = Solid(), dynamic: Dynamic = D
                 log.info(f'ux: {ux:mm}')
                 with export.mplfigure('tip-displacement.jpg', dpi=150) as fig:
                     dynamic.add_and_plot(
-                        'uy [mm]', t / 's', uy / 'mm', ax=fig.add_subplot(211))
+                        'uy', t, 's', uy, 'mm', ax=fig.add_subplot(211))
                     dynamic.add_and_plot(
-                        'ux [mm]', t / 's', ux / 'mm', ax=fig.add_subplot(212, xlabel='time [s]'))
+                        'ux', t, 's', ux, 'mm', ax=fig.add_subplot(212, xlabel='time [s]'))
 
     participant.finalize()
 
