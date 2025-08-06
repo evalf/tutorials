@@ -86,22 +86,23 @@ class Dynamic:
     gamma: float = .8
     beta: float = .4
 
-    def set_timestep(self, timestep):
-        self.timestep = timestep
-        self.timeseries = defaultdict(
-            deque(maxlen=round(self.window / timestep)).copy)
+    def __post_init__(self):
+        self.timeseries = defaultdict(deque)
 
     def ramp_up(self, t):
         return .5 - .5 * numpy.cos(numpy.pi * min(t / self.init, 1))
 
-    def add_and_plot(self, name, t, v, ax):
+    def add_and_plot(self, name, t, tunit, v, vunit, ax):
         'Add data point and plot time series for past window.'
 
         d = self.timeseries[name]
         d.append((t, v))
-        times, values = numpy.stack(d, axis=1)
+        while t - d[0][0] > self.window:
+            d.popleft()
+        times = numpy.array([t / tunit for t, _ in d])
+        values = numpy.array([v / vunit for _, v in d])
         ax.plot(times, values)
-        ax.set_ylabel(name)
+        ax.set_ylabel(f'{name} [{vunit}]')
         ax.grid()
         ax.autoscale(enable=True, axis='x', tight=True)
 
@@ -123,19 +124,19 @@ class Dynamic:
         aδt2 = a0δt2 + δaδt2
         return dict(args, d=d + uδt + .5 * aδt2, d0=d, u0δt=uδt, a0δt2=aδt2)
 
-    def newmark_defo(self, d):
+    def newmark_defo(self, d, timestep):
         D = self.newmark_defo_args(
             d, *[function.replace_arguments(d, [('d', t)]) for t in ('d0', 'u0δt', 'a0δt2')])
-        return D['u0δt'] / self.timestep, D['a0δt2'] / self.timestep**2
+        return D['u0δt'] / timestep, D['a0δt2'] / timestep**2
 
     def newmark_velo_args(self, u, u0=0., a0δt=0., **args):
         aδt = a0δt + (u - u0 - a0δt) / self.gamma
         return dict(args, u=u + aδt, u0=u, a0δt=aδt)
 
-    def newmark_velo(self, u):
+    def newmark_velo(self, u, timestep):
         D = self.newmark_velo_args(
             u, *[function.replace_arguments(u, [('u', t)]) for t in ('u0', 'a0δt')])
-        return D['a0δt'] / self.timestep
+        return D['a0δt'] / timestep
 
 
 def main(domain: Domain = Domain(), fluid: Fluid = Fluid(), dynamic: Dynamic = Dynamic()):
@@ -164,7 +165,6 @@ def main(domain: Domain = Domain(), fluid: Fluid = Fluid(), dynamic: Dynamic = D
     participant.initialize()
 
     timestep = participant.get_max_time_step_size()
-    dynamic.set_timestep(timestep * precice_time)
 
     ns = Namespace()
     ns.δ = function.eye(2)
@@ -184,8 +184,8 @@ def main(domain: Domain = Domain(), fluid: Fluid = Fluid(), dynamic: Dynamic = D
 
     ns.urel = topo.field('u', btype='std', degree=2,
                          shape=(2,)) * fluid.velocity
-    ns.v, ns.a = dynamic.newmark_defo(ns.d)
-    ns.arel = dynamic.newmark_velo(ns.urel)
+    ns.v, ns.a = dynamic.newmark_defo(ns.d, timestep * precice_time)
+    ns.arel = dynamic.newmark_velo(ns.urel, timestep * precice_time)
     ns.u_i = 'v_i + urel_i'
     ns.DuDt_i = 'a_i + arel_i + ∇_j(u_i) urel_j'  # material derivative
 
@@ -252,7 +252,7 @@ def main(domain: Domain = Domain(), fluid: Fluid = Fluid(), dynamic: Dynamic = D
             if participant.requires_writing_checkpoint():
                 checkpoint = t, args
 
-            t += dynamic.timestep
+            t += timestep * precice_time
 
             cons['d'][r_where] = participant.read_data(
                 r_name, 'Displacement', r_ids, timestep)
@@ -298,9 +298,9 @@ def main(domain: Domain = Domain(), fluid: Fluid = Fluid(), dynamic: Dynamic = D
                 log.info(f'drag: {D:N/m}')
                 with export.mplfigure('force.jpg', dpi=150) as fig:
                     dynamic.add_and_plot(
-                        'lift [N/m]', t / 's', L / 'N/m', ax=fig.add_subplot(211))
+                        'lift', t, 's', L, 'N/m', ax=fig.add_subplot(211))
                     dynamic.add_and_plot(
-                        'drag [N/m]', t / 's', D / 'N/m', ax=fig.add_subplot(212, xlabel='time [s]'))
+                        'drag', t, 's', D, 'N/m', ax=fig.add_subplot(212, xlabel='time [s]'))
 
     participant.finalize()
 
