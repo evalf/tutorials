@@ -10,6 +10,7 @@ from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import Optional
 from pathlib import Path
+from itertools import count
 import treelog as log
 import numpy
 
@@ -80,15 +81,6 @@ class Dynamic:
         self.timestep = timestep
         self.timeseries = defaultdict(
             deque(maxlen=round(self.window / timestep)).copy)
-
-    @property
-    def times(self):
-        'Return all configured time steps for the simulation.'
-
-        t = Time('0s')
-        while True:
-            t += self.timestep
-            yield t
 
     def add_and_plot(self, name, t, v, ax):
         'Add data point and plot time series for past window.'
@@ -179,20 +171,18 @@ def main(domain: Domain = Domain(), solid: Solid = Solid(), dynamic: Dynamic = D
 
     # initial values
     args = {'d': numpy.zeros(function.arguments_for(res)['d'].shape)}
+    t = Time('0s')
 
     bbezier = topo.boundary.sample('bezier', 3)
     x_bbz = bbezier.bind(ns.x)
 
-    assert participant.requires_writing_checkpoint()
-    checkpoint = args
-
-    with log.iter.plain('timestep', dynamic.times) as times:
-        t = next(times)
-
+    with log.iter.plain('time step', count()) as iter_context:
         while participant.is_coupling_ongoing():
 
-            if participant.requires_reading_checkpoint():
-                args = checkpoint
+            if participant.requires_writing_checkpoint():
+                checkpoint = t, args
+
+            t += dynamic.timestep
 
             args = dynamic.newmark_defo_args(**args)
             args['traction'] = participant.read_data(
@@ -203,8 +193,11 @@ def main(domain: Domain = Domain(), solid: Solid = Solid(), dynamic: Dynamic = D
                 rw_name, 'Displacement', rw_ids, rw_sample.eval(ns.d, args) / precice_length)
             participant.advance(timestep)
 
-            if participant.requires_writing_checkpoint():
-                checkpoint = args
+            if participant.requires_reading_checkpoint():
+                t, args = checkpoint
+
+            if participant.is_time_window_complete():
+                next(iter_context)
 
                 xb = function.eval(x_bbz, args)
                 with export.mplfigure('solution.jpg', dpi=150) as fig:
@@ -224,7 +217,7 @@ def main(domain: Domain = Domain(), solid: Solid = Solid(), dynamic: Dynamic = D
                     dynamic.add_and_plot(
                         'ux [mm]', t / 's', ux / 'mm', ax=fig.add_subplot(212, xlabel='time [s]'))
 
-                t = next(times)
+    participant.finalize()
 
 
 if __name__ == '__main__':

@@ -10,6 +10,7 @@ from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import Optional
 from pathlib import Path
+from itertools import count
 import treelog as log
 import numpy
 
@@ -90,22 +91,8 @@ class Dynamic:
         self.timeseries = defaultdict(
             deque(maxlen=round(self.window / timestep)).copy)
 
-    @property
-    def times(self):
-        'Return all configured time steps for the simulation.'
-
-        t = Time('0s')
-        while True:
-            t += self.timestep
-            yield t
-
     def ramp_up(self, t):
         return .5 - .5 * numpy.cos(numpy.pi * min(t / self.init, 1))
-
-    def rate(self, v1, subs):
-        dt = function.field('dt') * precice_time
-        v0 = function.replace_arguments(v1, subs)
-        return (v1 - v0) / dt
 
     def add_and_plot(self, name, t, v, ax):
         'Add data point and plot time series for past window.'
@@ -247,6 +234,7 @@ def main(domain: Domain = Domain(), fluid: Fluid = Fluid(), dynamic: Dynamic = D
 
     # initial values
     args = {a: numpy.zeros(function.arguments_for(res)[a].shape) for a in 'ud'}
+    t = Time('0s')
 
     bezier = topo['fluid'].sample('bezier', 3)
     bezier = bezier.subset(bezier.eval(geom[0]) < 2.2 * domain.channel_height)
@@ -258,16 +246,13 @@ def main(domain: Domain = Domain(), fluid: Fluid = Fluid(), dynamic: Dynamic = D
     bbezier = topo['fluid'].boundary['cylinder,structure'].sample('bezier', 3)
     x_bbz = bbezier.bind(ns.x)
 
-    assert participant.requires_writing_checkpoint()
-    checkpoint = args
-
-    with log.iter.plain('timestep', dynamic.times) as times:
-        t = next(times)
-
+    with log.iter.plain('time step', count()) as iter_context:
         while participant.is_coupling_ongoing():
 
-            if participant.requires_reading_checkpoint():
-                args = checkpoint
+            if participant.requires_writing_checkpoint():
+                checkpoint = t, args
+
+            t += dynamic.timestep
 
             cons['d'][r_where] = participant.read_data(
                 r_name, 'Displacement', r_ids, timestep)
@@ -286,8 +271,11 @@ def main(domain: Domain = Domain(), fluid: Fluid = Fluid(), dynamic: Dynamic = D
                 w_name, 'Stress', w_ids, w_sample.eval(ns.t, args) / precice_stress)
             participant.advance(timestep)
 
-            if participant.requires_writing_checkpoint():
-                checkpoint = args
+            if participant.requires_reading_checkpoint():
+                t, args = checkpoint
+
+            if participant.is_time_window_complete():
+                next(iter_context)
 
                 x, xb, u, p = function.eval([x_bz, x_bbz, u_bz, p_bz], args)
                 with export.mplfigure('solution.jpg', dpi=150) as fig:
@@ -314,7 +302,7 @@ def main(domain: Domain = Domain(), fluid: Fluid = Fluid(), dynamic: Dynamic = D
                     dynamic.add_and_plot(
                         'drag [N/m]', t / 's', D / 'N/m', ax=fig.add_subplot(212, xlabel='time [s]'))
 
-                t = next(times)
+    participant.finalize()
 
 
 if __name__ == '__main__':
