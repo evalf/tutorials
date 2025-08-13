@@ -1,4 +1,7 @@
 # Turek benchmark fluid solver, modified from https://examples.nutils.org/official-turek/
+#
+# Thanks to the Technical University of Eindhoven for funding the development
+# of this script.
 
 from precice import Participant
 from nutils import cli, export, function

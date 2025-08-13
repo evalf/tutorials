@@ -89,6 +89,11 @@ mv blockMeshDict blockMeshDict_original
 mv blockMeshDict_refined blockMeshDict
 ```
 
+## Acknowledgements
+
+Thanks to the Technical University of Eindhoven for funding the development of
+the Nutils participants for this tutorial.
+
 ## References
 
 [1]  S. Turek, J. Hron, M. Madlik, M. Razzaq, H. Wobker, and J. Acker. Numerical simulation and benchmarking of a monolithic multigrid solver for fluid-structure interaction problems with application to hemodynamics. In H.-J. Bungartz, M. Mehl, and M. Schäfer, editors, Fluid Structure Interaction II: Modelling, Simulation, Optimization, page 432. Springer Berlin Heidelberg, 2010.
